@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Foundry
+cache/
+broadcast/
+
+# Local deploy state — the testnet address file is load-bearing for the
+# indexer's /api/deployment route and must be tracked (see EXECUTION-PLAN A12).
+deployments/*
+!deployments/hedera-testnet.json
+
+# Vendor research tree (not part of the build)
+.research/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Command Code local state
+.commandcode/
+
+# Frontend build + generator artifacts
+.output/
+.wrangler/
+.lovable/
+.vinxi/
+.nitro/
