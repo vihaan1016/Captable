@@ -1,0 +1,29 @@
+{
+  "countryCode": "US",
+  "nsin": "037833100",
+  "bond": {
+    "name": "Cap Table Demo Bond",
+    "symbol": "CTDB",
+    "decimals": 2,
+    "nominalValue": 100,
+    "nominalValueDecimals": 2,
+    "couponRateBps": 500,
+    "couponFrequencyMonths": 6,
+    "maturityDaysOut": 365,
+    "totalSupply": 1000000
+  },
+  "auction": {
+    "currency": "0x0000000000000000000000000000000000000000",
+    "startBlockDelta": 30,
+    "endBlockDelta": 300,
+    "claimBlockDelta": 30,
+    "tickSpacingBps": 25,
+    "navDiscountBps": 200,
+    "reserveRatioBps": 6000,
+    "navDefault": "103.31"
+  },
+  "compliance": {
+    "maxInvestors": 50,
+    "maxOwnershipBps": 1500
+  }
+}

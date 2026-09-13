@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: cap_table
+      POSTGRES_PASSWORD: cap_table
+      POSTGRES_DB: cap_table
+    ports:
+      - '5432:5432'
+    volumes:
+      - cap-table-pg:/var/lib/postgresql/data
+      - ./packages/indexer/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cap_table']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cap-table-pg:

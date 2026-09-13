@@ -1,0 +1,191 @@
+@import "tailwindcss" source(none);
+@source "../src";
+
+/*
+ * Cap Table design system - terminal / cockpit.
+ *
+ * The canvas is pure black and carries no container surfaces. Grouping is done
+ * with 1px hairlines and whitespace only: there are no cards, no elevation, no
+ * gradients, and no shadows anywhere in the compiled sheet. Data is bright and
+ * monospaced, labels are muted and small. All colors are tokens.
+ */
+
+@theme inline {
+  /* Sharp corners. Nothing in the system exceeds 4px. */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
+  --radius-4xl: 4px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-refusal: var(--refusal);
+  --color-disabled-foreground: var(--disabled-foreground);
+  --color-terminal: var(--terminal);
+
+  --font-display: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  --radius: 4px;
+
+  /* Canvas. Pure black: every pane sits directly on it. */
+  --background: #000000;
+  --foreground: #ededed;
+
+  /* Card and popover exist only because Radix primitives ask for them. They
+     resolve to the canvas so no element ever paints a container surface. */
+  --card: #000000;
+  --card-foreground: #ededed;
+  --popover: #000000;
+  --popover-foreground: #ededed;
+
+  /* Primary is neutral white: the palette carries no brand hue. */
+  --primary: #ededed;
+  --primary-foreground: #000000;
+
+  --secondary: #0a0a0a;
+  --secondary-foreground: #ededed;
+  --muted: #0a0a0a;
+  --muted-foreground: #666666;
+
+  /* Row hover tint. Deliberately barely there. */
+  --accent: #101010;
+  --accent-foreground: #ededed;
+  --disabled-foreground: #444444;
+
+  /* Semantic data. These are the only saturated colors in the system. */
+  --success: #00ff66;
+  --warning: #ffcc00;
+  --refusal: #ff3366;
+  --destructive: #ff3366;
+  --destructive-foreground: #ededed;
+
+  /* Ultra-subtle hairline. This is the only structure the UI has. */
+  --border: #1a1a1a;
+  --input: #000000;
+  --ring: #333333;
+  --terminal: #0a0a0a;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-mono);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Sans is reserved for the landing headline and its narrative copy. */
+  h1 {
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+  }
+}
+
+/* ---------- Motion: data-driven only ---------- */
+
+/*
+ * The live tick. A single from-keyframe with no fill mode, so the value starts
+ * at the execution green and interpolates back to whatever color it already
+ * had. Re-triggered by remounting the node, never by a transition.
+ */
+@keyframes tick-flash {
+  from {
+    color: var(--success);
+  }
+}
+
+@utility tick-flash {
+  animation: tick-flash 0.5s ease-out;
+}
+
+@keyframes tick-flash-down {
+  from {
+    color: var(--refusal);
+  }
+}
+
+@utility tick-flash-down {
+  animation: tick-flash-down 0.5s ease-out;
+}
+
+/* The status square on a live venue. One second, hard steps, no easing. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@utility pulse-dot {
+  animation: pulse-dot 1s steps(2, end) infinite;
+}
+
+@utility liquid-loader {
+  animation: pulse-dot 0.6s steps(2, end) infinite;
+  background: var(--foreground);
+}
+
+@keyframes shake-x {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@utility shake {
+  animation: shake-x 0.3s ease-in-out;
+}
+
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@utility caret {
+  animation: caret 0.8s steps(2, end) infinite;
+}

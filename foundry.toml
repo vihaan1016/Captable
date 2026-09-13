@@ -1,0 +1,55 @@
+[profile.default]
+src = "contracts/src"
+out = "out"
+libs = ["contracts/lib"]
+test = "contracts/test"
+script = "contracts/script"
+solc = "0.8.26"
+optimizer = true
+optimizer_runs = 11111
+bytecode_hash = "none"
+verbosity = 2
+ffi = false
+
+fs_permissions = [{ access = "read-write", path = "contracts/config" }, { access = "read-write", path = "deployments" }]
+
+extra_output = ["storageLayout"]
+
+remappings = [
+  "forge-std=contracts/lib/forge-std/src",
+  "@openzeppelin/contracts=contracts/lib/openzeppelin-contracts/contracts",
+  "@openzeppelin/contracts-upgradeable=contracts/lib/openzeppelin-contracts-upgradeable/contracts",
+  "solady=contracts/lib/solady/src",
+  "permit2=contracts/lib/permit2",
+  "v4-periphery=contracts/lib/v4-periphery",
+  "liquidity-launcher=contracts/lib/liquidity-launcher",
+  "blocknumberish=contracts/lib/blocknumberish",
+  "continuous-clearing-auction=contracts/lib/continuous-clearing-auction/src",
+  "cap-table=contracts/src",
+  "@uniswap/v4-core=contracts/lib/liquidity-launcher/lib/v4-core",
+  "@uniswap/v4-periphery=contracts/lib/liquidity-launcher/lib/v4-periphery",
+]
+
+additional_compiler_profiles = [{ name = "via_ir", optimizer_runs = 11111, via_ir = true }]
+
+compilation_restrictions = [
+  { paths = "contracts/lib/continuous-clearing-auction/src/ContinuousClearingAuctionFactory.sol", via_ir = true }
+]
+
+[profile.default.fuzz]
+runs = 2500
+
+[profile.default.invariant]
+fail_on_revert = true
+runs = 100
+depth = 2500
+
+[fmt]
+line_length = 120
+tab_width = 4
+quote_style = "single"
+sort_imports = true
+number_underscore = "thousands"
+
+[lint]
+exclude_lints = ["mixed-case-variable"]

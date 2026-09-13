@@ -1,0 +1,14 @@
+{
+  "name": "cap-table",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  }
+}
