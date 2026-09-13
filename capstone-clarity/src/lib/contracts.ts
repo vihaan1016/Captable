@@ -193,6 +193,13 @@ export const KYC_ABI = [
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
   },
+  {
+    type: "function",
+    name: "getKycStatusFor",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint8" }],
+  },
 ] as const;
 
 export const CONTROL_LIST_ABI = [

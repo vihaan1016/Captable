@@ -147,6 +147,11 @@ export function decodeContractError(err: unknown, args: ErrorArgs = {}): AppErro
 }
 
 function extractSelector(err: unknown): string {
+  if (typeof err === "string") {
+    // previewValidate returns the raw bytes4 selector as a string ("0x840308b8").
+    const m = /(0x[0-9a-fA-F]{8})/.exec(err);
+    return m ? m[1]! : "0x00000000";
+  }
   if (err instanceof Error) {
     const s = String(err.message ?? err.name);
     const m = /(0x[0-9a-fA-F]{8})/.exec(s);

@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -207,6 +208,7 @@ interface State {
   bids: Bid[];
   refusals: Refusal[];
   connected: string | null;
+  connectedKyc: boolean;
   actingAs: string;
   complianceAttached: boolean;
   ssiManagerGranted: boolean;
@@ -332,6 +334,22 @@ export function ChainProvider({ children }: { children: ReactNode }) {
     refetchInterval: 30_000,
   });
 
+  // KYC status of the connected wallet, read live from the bond. The register
+  // table only lists holders of record, so a KYC-granted non-holder would
+  // otherwise read as "no kyc" forever (the Get KYC button would never clear).
+  const connectedKycQ = useQuery({
+    queryKey: ["connectedKyc", deployment.bond, address],
+    enabled: Boolean(deployment.bond) && Boolean(address),
+    queryFn: () =>
+      publicClient.readContract({
+        address: deployment.bond as `0x${string}`,
+        abi: KYC_ABI,
+        functionName: "getKycStatusFor",
+        args: [address as `0x${string}`],
+      }),
+    refetchInterval: 4000,
+  });
+
   const investors: Investor[] = useMemo(() => {
     const list = investorsQ.data?.investors ?? [];
     return list.map((i) => ({
@@ -431,6 +449,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
       bids,
       refusals,
       connected: address ?? null,
+      connectedKyc: connectedKycQ.data === 1,
       actingAs: address ?? investors[0]?.address ?? "",
       complianceAttached: Boolean(deployment.compliance),
       ssiManagerGranted: Boolean(deployment.bond),
@@ -441,9 +460,9 @@ export function ChainProvider({ children }: { children: ReactNode }) {
       couponDistributed: false,
       lastBlock: auction ? Number(auction.currentBlock) : 0,
     };
-  }, [auction, registerQ.data, deployment, investors, bids, refusals, address, couponCountQ.data, hookConfigQ.data]);
+  }, [auction, registerQ.data, deployment, investors, bids, refusals, address, couponCountQ.data, hookConfigQ.data, connectedKycQ.data]);
 
-  async function preflight(beneficiary: string, priceCents: bigint, amount: RawBond): Promise<PreflightResult> {
+  const preflight = useCallback(async (beneficiary: string, priceCents: bigint, amount: RawBond): Promise<PreflightResult> => {
     const priceQ96 = toQ96(priceCents);
     const [ok, reason] = await publicClient.readContract({
       address: deployment.hook as `0x${string}`,
@@ -509,7 +528,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
       args["hi"] = formatCents((nav * (10_000n + bandBps)) / 10_000n);
     }
     return { ok: false, error: decodeContractError(reason, args), projected };
-  }
+  }, [deployment.bond, deployment.router, deployment.hook, registerQ.data, auction?.navCents]);
 
   const actions = useMemo<ChainApi["actions"]>(() => {
     const ensureWallet = () => {

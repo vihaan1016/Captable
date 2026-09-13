@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Shell } from "@/components/Shell";
@@ -111,6 +111,19 @@ function Venue() {
   const [priceInput, setPriceInput] = useState("101.25");
   const [amountInput, setAmountInput] = useState("50000");
   const [pf, setPf] = useState<PreflightResult | null>(null);
+  const [pfError, setPfError] = useState<string | null>(null);
+
+  // `state.actingAs` is "" on the first render (no wallet, investors not yet
+  // loaded), and useState only reads the initial value once. Follow identity
+  // changes — wallet connect/disconnect, or the investors list first loading —
+  // without clobbering a manually picked beneficiary across data refetches.
+  const prevActingAs = useRef(state.actingAs);
+  useEffect(() => {
+    if (state.actingAs && state.actingAs !== prevActingAs.current) {
+      prevActingAs.current = state.actingAs;
+      setBeneficiary(state.actingAs);
+    }
+  }, [state.actingAs]);
 
   const tickQ96 = toQ96(state.tickCents);
   const rawCents = BigInt(Math.round((Number(priceInput) || 0) * 100));
@@ -121,11 +134,24 @@ function Venue() {
   useEffect(() => {
     let active = true;
     if (beneficiary && amount > 0n) {
-      void preflight(beneficiary, snapped.cents, amount).then((r) => {
-        if (active) setPf(r);
-      });
+      void preflight(beneficiary, snapped.cents, amount)
+        .then((r) => {
+          if (active) {
+            setPf(r);
+            setPfError(null);
+          }
+        })
+        .catch((e: unknown) => {
+          // Never hang on "checking on-chain…": surface the failure and keep
+          // the Submit-anyway path available.
+          if (active) {
+            setPf(null);
+            setPfError(e instanceof Error ? e.message : String(e));
+          }
+        });
     } else {
       setPf(null);
+      setPfError(null);
     }
     return () => {
       active = false;
@@ -142,9 +168,9 @@ function Venue() {
   const peak = Math.max(1, ...book.map((b) => Number(b.amount)));
   const claimable = state.bids.filter((b) => b.state === 3 || b.state === 6);
 
-  const connectedKyc =
-    state.investors.find((i) => i.address === (state.connected ?? "").toLowerCase())?.kyc ?? false;
-  const needsKyc = roles.isConnected && !connectedKyc;
+  // Live KYC read for the connected wallet: the register table only lists
+  // holders of record, so a KYC'd non-holder must be checked on-chain.
+  const needsKyc = roles.isConnected && !state.connectedKyc;
   const [kycPending, setKycPending] = useState(false);
 
   async function requestKyc() {
@@ -324,6 +350,18 @@ function Venue() {
                       {i.address} {i.blocked ? "/ blocked" : i.kyc ? "/ kyc" : "/ no kyc"}
                     </option>
                   ))}
+                  {state.connected &&
+                    !state.investors.some(
+                      (i) => i.address === state.connected!.toLowerCase(),
+                    ) && (
+                      <option
+                        value={state.connected.toLowerCase()}
+                        className="bg-background"
+                      >
+                        {state.connected.toLowerCase()}{" "}
+                        {state.connectedKyc ? "/ kyc" : "/ no kyc"}
+                      </option>
+                    )}
                 </select>
               </label>
 
@@ -376,7 +414,11 @@ function Venue() {
                 />
                 <div className="mt-3">
                   {!pf ? (
-                    <span className="text-muted-foreground">{"> checking on-chain…"}</span>
+                    pfError ? (
+                      <span className="text-refusal">{"> preflight failed: " + pfError}</span>
+                    ) : (
+                      <span className="text-muted-foreground">{"> checking on-chain…"}</span>
+                    )
                   ) : pf.ok ? (
                     <span className="text-success">{"> simulation passed, safe to sign"}</span>
                   ) : pf.error ? (
