@@ -43,10 +43,10 @@ contract CapTableValidationHook is IValidationHook {
     uint256 public bandBps;
     uint256 public maxStaleness;
 
-    // §6.5: cached at construction. The register projection re-reads only the
-    // mutable holder count; these two are stable for the life of the demo.
-    uint256 public immutable MAX_INVESTORS;
-    uint256 public immutable MAX_OWNERSHIP_BPS;
+    // The compliance caps are read live, not cached: console §2 calls setRules
+    // on the compliance module, and the hook must enforce the new values on the
+    // next bid. The module is a plain contract, so the two staticcalls add
+    // ~6k gas — cheap compared with the ATS diamond delegatecalls around it.
 
     address public owner;
     bool internal _auctionSet;
@@ -91,11 +91,6 @@ contract CapTableValidationHook is IValidationHook {
         maxStaleness = _maxStaleness;
         owner = msg.sender;
         if (auction != address(0)) _auctionSet = true;
-
-        // Cache stable compliance values once (§6.5) to keep the bid path under
-        // the 400k gas budget. The holder count is still read live.
-        MAX_INVESTORS = _readComplianceUint('maxInvestors()');
-        MAX_OWNERSHIP_BPS = _readComplianceUint('maxOwnershipBps()');
     }
 
     /// @notice The auction address is part of the CREATE2 salt the factory uses,
@@ -144,9 +139,20 @@ contract CapTableValidationHook is IValidationHook {
     /// @notice Current register state used by the web app.
     function registerState() external view returns (uint256 holders, uint256 maxInvestors, uint256 largestBps, uint256 maxOwnershipBps) {
         holders = ISecurityHolders(SECURITY_HOLDERS).getTotalSecurityHolders();
-        maxInvestors = MAX_INVESTORS;
+        maxInvestors = _maxInvestors();
         largestBps = _largestHolderBps();
-        maxOwnershipBps = MAX_OWNERSHIP_BPS;
+        maxOwnershipBps = _maxOwnershipBps();
+    }
+
+    /// @notice Live investor-count cap, read from the compliance module on every
+    ///         call so console §2 rule changes take effect without redeployment.
+    function MAX_INVESTORS() external view returns (uint256) {
+        return _maxInvestors();
+    }
+
+    /// @notice Live ownership cap (bps of totalSupply); see MAX_INVESTORS.
+    function MAX_OWNERSHIP_BPS() external view returns (uint256) {
+        return _maxOwnershipBps();
     }
 
     // ------------------------------------------------------------------
@@ -167,7 +173,7 @@ contract CapTableValidationHook is IValidationHook {
 
         ISettlementRouter router = ISettlementRouter(SETTLEMENT_ROUTER);
         uint256 currentHolders = ISecurityHolders(SECURITY_HOLDERS).getTotalSecurityHolders();
-        uint256 maxInvestors = MAX_INVESTORS;
+        uint256 maxInvestors = _maxInvestors();
         bool isExistingHolder = AtsBalance.totalOf(BOND, beneficialOwner) > 0
             || router.isPendingBeneficiary(beneficialOwner);
         uint256 projectedHolders = currentHolders + (isExistingHolder ? 0 : 1) + router.pendingNewBeneficiaryCount();
@@ -176,7 +182,7 @@ contract CapTableValidationHook is IValidationHook {
         uint256 projectedBalance =
             AtsBalance.totalOf(BOND, beneficialOwner) + router.pendingAmountFor(beneficialOwner) + amount;
         uint256 projectedBps = projectedBalance * 10_000 / IERC20(BOND).totalSupply();
-        uint256 maxOwnershipBps = MAX_OWNERSHIP_BPS;
+        uint256 maxOwnershipBps = _maxOwnershipBps();
         if (projectedBps > maxOwnershipBps) revert WouldExceedMaxOwnership(projectedBps, maxOwnershipBps);
 
         _checkNavBand(maxPrice);
@@ -199,7 +205,7 @@ contract CapTableValidationHook is IValidationHook {
 
         ISettlementRouter router = ISettlementRouter(SETTLEMENT_ROUTER);
         uint256 currentHolders = ISecurityHolders(SECURITY_HOLDERS).getTotalSecurityHolders();
-        uint256 maxInvestors = MAX_INVESTORS;
+        uint256 maxInvestors = _maxInvestors();
         bool isExistingHolder = AtsBalance.totalOf(BOND, beneficialOwner) > 0
             || router.isPendingBeneficiary(beneficialOwner);
         uint256 projectedHolders = currentHolders + (isExistingHolder ? 0 : 1) + router.pendingNewBeneficiaryCount();
@@ -208,7 +214,7 @@ contract CapTableValidationHook is IValidationHook {
         uint256 projectedBalance =
             AtsBalance.totalOf(BOND, beneficialOwner) + router.pendingAmountFor(beneficialOwner) + amount;
         uint256 projectedBps = projectedBalance * 10_000 / IERC20(BOND).totalSupply();
-        uint256 maxOwnershipBps = MAX_OWNERSHIP_BPS;
+        uint256 maxOwnershipBps = _maxOwnershipBps();
         if (projectedBps > maxOwnershipBps) return (false, SEL_MAX_OWNERSHIP);
 
         (bool navOk,,) = _navBandView(maxPrice);
@@ -280,15 +286,19 @@ contract CapTableValidationHook is IValidationHook {
         return isWhiteList ? !inList : inList;
     }
 
+    /// @dev Live read from the compliance module. `0` means "unlimited" in the
+    ///      module's own semantics; a missing getter also reads as unlimited.
     function _maxInvestors() internal view returns (uint256) {
-        return MAX_INVESTORS;
+        uint256 v = _readComplianceUint('maxInvestors()');
+        return v == 0 ? type(uint256).max : v;
     }
 
     function _maxOwnershipBps() internal view returns (uint256) {
-        return MAX_OWNERSHIP_BPS;
+        uint256 v = _readComplianceUint('maxOwnershipBps()');
+        return v == 0 ? type(uint256).max : v;
     }
 
-    /// @dev Cached at construction (§6.5). Treat a missing getter as "unlimited".
+    /// @dev Treat a missing getter as "unlimited".
     function _readComplianceUint(string memory sig) internal view returns (uint256) {
         (bool ok, bytes memory data) = COMPLIANCE.staticcall(abi.encodeWithSignature(sig));
         if (ok && data.length >= 32) return abi.decode(data, (uint256));

@@ -93,6 +93,30 @@ contract RegisterProjectionTest is Test {
         assertEq(successes, 1);
     }
 
+    function test_RuleChangeAfterDeploymentIsEnforced() public {
+        // The hook must read the caps live from the compliance module, not
+        // cache them in constructor immutables — otherwise console §2 setRules
+        // changes the ATS canTransfer path but never the bid path.
+        bond.mint(seller, 860_000);
+        address bidder = address(0xB0B);
+        _grant(bidder);
+        router.setPending(bidder, 0, false);
+        compliance.setPermissive(true);
+
+        // Under the construction-time cap (50 investors) the bid is admitted.
+        hook.validate(_price(10125), 100, address(router), address(router), abi.encode(bidder, bytes32(0)));
+
+        // Console §2 slides the investor cap to 1. The very next call must
+        // enforce the new cap: projected holders = 2 (seller + new bidder).
+        compliance.setCaps(1, 1500);
+        assertEq(hook.MAX_INVESTORS(), 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(CapTableValidationHook.WouldExceedMaxInvestors.selector, 2, 1)
+        );
+        hook.validate(_price(10125), 100, address(router), address(router), abi.encode(bidder, bytes32(0)));
+    }
+
     function test_OwnershipExactBoundaryPasses() public {
         // Total supply exactly 1_000_000; cap 1500 bps => 150_000 tokens max.
         // Seller holds 860_000, bidder holds 140_000.

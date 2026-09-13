@@ -69,7 +69,10 @@ export function TxAction({
       onSuccess?.();
       setTimeout(() => setPhase("idle"), 4000);
     } catch (err) {
-      const decoded = decodeContractError(err);
+      // A forced write (e.g. "Submit anyway") throws the AppError it already
+      // holds, including its decoded args and the mined tx hash — pass it
+      // through instead of re-decoding from a bare error message.
+      const decoded = isAppError(err) ? err : decodeContractError(err);
       setError(decoded);
       setPhase("reverted");
       onRevert?.(decoded);
@@ -150,16 +153,28 @@ export function TxAction({
         </span>
       )}
 
-      {phase !== "idle" && hash && variant !== "verb" && (
+      {phase !== "idle" && (hash ?? (phase === "reverted" ? error?.txHash ?? null : null)) && variant !== "verb" && (
         <a
-          href={hashscanTx(hash)}
+          href={hashscanTx(hash ?? error?.txHash ?? "")}
           target="_blank"
           rel="noreferrer"
           className="font-mono text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
-          {hash.slice(0, 18)}... on HashScan
+          {(hash ?? error?.txHash ?? "").slice(0, 18)}... on HashScan
         </a>
       )}
     </span>
+  );
+}
+
+/** True when the thrown value is already a decoded AppError (forced writes). */
+function isAppError(e: unknown): e is AppError {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "selector" in e &&
+    "sentence" in e &&
+    "severity" in e &&
+    "name" in e
   );
 }

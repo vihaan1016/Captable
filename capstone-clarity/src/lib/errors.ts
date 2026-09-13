@@ -7,6 +7,8 @@ export interface AppError {
   sentence: string;
   hint?: string | undefined;
   severity: "identity" | "register" | "settlement" | "unknown";
+  /** Set when a forced write was mined and reverted: the real tx hash. */
+  txHash?: string | undefined;
 }
 
 type Builder = (args: ErrorArgs) => AppError;
@@ -63,7 +65,7 @@ export const ERROR_REGISTRY: Record<string, Builder> = {
     "register",
     (a) =>
       `Filling this bid would make ${a["projected"] ?? "?"} holders of record against a ${a["max"] ?? "?"}-investor limit.`,
-    "Reduce the amount so the fill lands on an existing holder, or raise maxInvestors in console §2.",
+    "Use an existing holder as beneficiary, or raise maxInvestors in console §2 — the hook reads the live cap.",
   ),
   "0x840308b8": mk(
     "WouldExceedMaxOwnership",
@@ -71,7 +73,7 @@ export const ERROR_REGISTRY: Record<string, Builder> = {
     "register",
     (a) =>
       `This fill would give the beneficiary ${a["projectedBps"] ?? "?"} bps against a ${a["maxBps"] ?? "?"} bps concentration cap.`,
-    "Split the order across beneficiaries or relax maxOwnershipBps.",
+    "Split the order across beneficiaries, or relax maxOwnershipBps in console §2.",
   ),
   "0xf7ea5440": mk(
     "BidBelowMinimum",
@@ -86,7 +88,7 @@ export const ERROR_REGISTRY: Record<string, Builder> = {
     "0xf08edadc",
     "settlement",
     (a) => `Price sits outside the NAV band of ${a["lo"] ?? "?"} to ${a["hi"] ?? "?"}.`,
-    "Move the price toward live NAV or relax the band.",
+    "Move the price toward live NAV, or push a fresh NAV from console §5.",
   ),
 
   // Router

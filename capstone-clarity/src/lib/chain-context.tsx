@@ -28,6 +28,7 @@ import type { BidStateCode } from "./bidState";
 import {
   asBps,
   asRawBond,
+  formatCents,
   toQ96,
   fromQ96,
   type Bps,
@@ -156,7 +157,11 @@ interface ChainApi {
   preflight: (beneficiary: string, priceCents: bigint, amount: RawBond) => Promise<PreflightResult>;
   clearingQ96: Q96;
   actions: {
-    placeBid: (maxPriceQ96: bigint, amountRaw: bigint) => Promise<string>;
+    placeBid: (
+      maxPriceQ96: bigint,
+      amountRaw: bigint,
+      opts?: { force?: boolean; expectedError?: AppError },
+    ) => Promise<string>;
     exitBid: (bidId: number) => Promise<string>;
     settle: (bidId: number) => Promise<string>;
     executeHold: (bidId: number, beneficiary: string, tokensFilled: bigint) => Promise<string>;
@@ -190,6 +195,10 @@ interface State {
   reserveTinybar: bigint;
   navCents: bigint;
   navUpdatedSecondsAgo: number;
+  navStale: boolean;
+  bandBps: number;
+  navBandLoCents: bigint;
+  navBandHiCents: bigint;
   maxStalenessSeconds: number;
   maxInvestors: number;
   maxOwnershipBps: Bps;
@@ -309,6 +318,20 @@ export function ChainProvider({ children }: { children: ReactNode }) {
     refetchInterval: 10_000,
   });
 
+  const hookConfigQ = useQuery({
+    queryKey: ["hookConfig", deployment.hook],
+    enabled: Boolean(deployment.hook),
+    queryFn: async () => {
+      const hook = deployment.hook as `0x${string}`;
+      const [bandBps, maxStaleness] = await Promise.all([
+        publicClient.readContract({ address: hook, abi: HOOK_ABI, functionName: "bandBps" }).catch(() => 1000n),
+        publicClient.readContract({ address: hook, abi: HOOK_ABI, functionName: "maxStaleness" }).catch(() => 3600n),
+      ]);
+      return { bandBps, maxStaleness };
+    },
+    refetchInterval: 30_000,
+  });
+
   const investors: Investor[] = useMemo(() => {
     const list = investorsQ.data?.investors ?? [];
     return list.map((i) => ({
@@ -375,6 +398,16 @@ export function ChainProvider({ children }: { children: ReactNode }) {
 
   const state = useMemo<State>(() => {
     const clearingCents = auction ? fromQ96(BigInt(auction.clearingPriceQ96) as Q96).cents : 0n;
+    const navCents = auction?.navCents != null ? BigInt(auction.navCents) : 0n;
+    const bandBps = Number(hookConfigQ.data?.bandBps ?? 1000n);
+    const maxStalenessSeconds = Number(hookConfigQ.data?.maxStaleness ?? 3600n);
+    // The indexer reports the oracle's `updatedAt` (unix seconds). Age the feed
+    // against the wall clock so a stale mock NAV shows as stale in the console
+    // instead of the hardcoded 0s that used to sit here.
+    const navUpdatedSecondsAgo =
+      auction?.navUpdatedAt != null
+        ? Math.max(0, Math.floor(Date.now() / 1000) - Number(auction.navUpdatedAt))
+        : 0;
     return {
       deployed: Boolean(deployment.auction),
       deployment,
@@ -384,9 +417,13 @@ export function ChainProvider({ children }: { children: ReactNode }) {
       raisedTinybar: BigInt(auction?.currencyRaised ?? "0"),
       requiredTinybar: BigInt(auction?.requiredCurrencyRaised ?? "0"),
       reserveTinybar: BigInt(auction?.settlementReserve ?? "0"),
-      navCents: auction?.navCents != null ? BigInt(auction.navCents) : 0n,
-      navUpdatedSecondsAgo: 0,
-      maxStalenessSeconds: 3600,
+      navCents,
+      navUpdatedSecondsAgo,
+      navStale: navUpdatedSecondsAgo > maxStalenessSeconds,
+      bandBps,
+      navBandLoCents: (navCents * (10_000n - BigInt(bandBps))) / 10_000n,
+      navBandHiCents: (navCents * (10_000n + BigInt(bandBps))) / 10_000n,
+      maxStalenessSeconds,
       maxInvestors: registerQ.data?.maxInvestors ?? 0,
       maxOwnershipBps: asBps(registerQ.data?.maxOwnershipBps ?? 0),
       tickCents: auction ? fromQ96(BigInt(auction.tickSpacing) as Q96).cents : 25n,
@@ -404,7 +441,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
       couponDistributed: false,
       lastBlock: auction ? Number(auction.currentBlock) : 0,
     };
-  }, [auction, registerQ.data, deployment, investors, bids, refusals, address, couponCountQ.data]);
+  }, [auction, registerQ.data, deployment, investors, bids, refusals, address, couponCountQ.data, hookConfigQ.data]);
 
   async function preflight(beneficiary: string, priceCents: bigint, amount: RawBond): Promise<PreflightResult> {
     const priceQ96 = toQ96(priceCents);
@@ -451,7 +488,27 @@ export function ChainProvider({ children }: { children: ReactNode }) {
     };
 
     if (ok) return { ok: true, projected };
-    return { ok: false, error: decodeContractError(reason, {}), projected };
+
+    // previewValidate returns only a selector, no arguments. The projection is
+    // computed above, so attach the numbers the error sentences need — the
+    // refusal ledger and the terminal panel must never print "?" placeholders
+    // for the two register-cap beats or the NAV band.
+    const args: Record<string, string | number> = {};
+    if (reason === "0xf94e2d7c") {
+      args["projected"] = holdersAfter;
+      args["max"] = maxInvestors;
+    } else if (reason === "0x840308b8") {
+      args["projectedBps"] = beneficiaryBpsAfter;
+      args["maxBps"] = maxOwnershipBps;
+    } else if (reason === "0xf08edadc") {
+      const bandBps = await publicClient
+        .readContract({ address: deployment.hook as `0x${string}`, abi: HOOK_ABI, functionName: "bandBps" })
+        .catch(() => 1000n);
+      const nav = auction?.navCents != null ? BigInt(auction.navCents) : 0n;
+      args["lo"] = formatCents((nav * (10_000n - bandBps)) / 10_000n);
+      args["hi"] = formatCents((nav * (10_000n + bandBps)) / 10_000n);
+    }
+    return { ok: false, error: decodeContractError(reason, args), projected };
   }
 
   const actions = useMemo<ChainApi["actions"]>(() => {
@@ -472,14 +529,33 @@ export function ChainProvider({ children }: { children: ReactNode }) {
     };
 
     return {
-      async placeBid(maxPriceQ96, amountRaw) {
-        return write({
+      async placeBid(maxPriceQ96, amountRaw, opts) {
+        if (!opts?.force) {
+          return write({
+            address: deployment.router as `0x${string}`,
+            abi: ROUTER_ABI,
+            functionName: "placeBid",
+            args: [maxPriceQ96, amountRaw, 0n],
+            value: amountRaw,
+          });
+        }
+
+        // "Submit anyway" path: the preflight already says this reverts, so
+        // broadcast it anyway with an explicit gas limit (estimation would
+        // abort on the expected revert) and wait for the mined receipt. The
+        // reverted transaction is real on-chain evidence, unlike the staticcall.
+        const w = ensureWallet();
+        const hash = await w.writeContract({
           address: deployment.router as `0x${string}`,
           abi: ROUTER_ABI,
           functionName: "placeBid",
           args: [maxPriceQ96, amountRaw, 0n],
           value: amountRaw,
-        });
+          gas: 900_000n,
+        } as never);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status === "success") return hash;
+        throw { ...(opts.expectedError ?? decodeContractError("0x00000000")), txHash: hash };
       },
       async exitBid(bidId) {
         return write({

@@ -1,0 +1,38 @@
+# Frontend ships to Cloudflare separately — keep its node_modules (979MB) out of
+# the backend upload.
+capstone-clarity/
+
+# Leftover build artifact, not part of the backend image.
+apps/
+
+# Foundry contracts are already deployed; the backend Dockerfile doesn't copy
+# them. Excluded mainly because contracts/lib/* symlinks point into .research/
+# and the CLI's follow_links(true) walker would otherwise drag ~400MB of vendor
+# research tree into the upload.
+contracts/
+.research/
+
+# Dependencies (installed server-side from the lockfiles).
+node_modules/
+**/node_modules/
+
+# Build outputs and tool caches.
+.output/
+.wrangler/
+.vinxi/
+.nitro/
+dist/
+build/
+cache/
+out/
+broadcast/
+
+# Logs and secrets.
+*.log
+.env
+.env.*
+
+# VCS and tooling state.
+.git/
+.commandcode/
+.research/

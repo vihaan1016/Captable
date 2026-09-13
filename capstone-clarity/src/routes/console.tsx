@@ -298,7 +298,7 @@ function RulesStage() {
       id="rules"
       index="02"
       title="Rules"
-      body="The two caps every transfer is measured against. Lowering a cap below current reality is refused, not silently applied."
+      body="The two caps the hook reads live on every bid — commit a lower maxInvestors and the very next new-holder bid is refused by the register projection. Lowering a cap below current reality is refused, not silently applied."
     >
       <div className="space-y-6">
         <div>
@@ -603,7 +603,7 @@ function OracleStage() {
       id="auction"
       index="05"
       title="Auction"
-      body="Bids are priced against NAV. Past the staleness window the venue stops quoting rather than quoting a guess."
+      body="Bids are priced against NAV. Past the staleness window the hook skips the band check rather than halting bids — push NAV here within the hour before filming the band beat."
     >
       <div>
         <Row
@@ -616,11 +616,20 @@ function OracleStage() {
         />
         <Row label="Current NAV" value={<Mono>${formatCents(state.navCents)}</Mono>} />
         <Row
+          label="Band"
+          value={
+            <Mono>
+              ±{state.bandBps / 100}% ($
+              {formatCents(state.navBandLoCents)}–${formatCents(state.navBandHiCents)})
+            </Mono>
+          }
+        />
+        <Row
           label="Last update"
           value={
             <span className="flex items-center gap-2">
               <Mono>{state.navUpdatedSecondsAgo}s ago</Mono>
-              <Tag tone={stale ? "refusal" : "success"}>{stale ? "stale" : "fresh"}</Tag>
+              <Tag tone={stale ? "refusal" : "success"}>{stale ? "stale — band bypassed" : "fresh"}</Tag>
             </span>
           }
         />

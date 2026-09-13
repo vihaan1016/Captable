@@ -161,16 +161,27 @@ function Venue() {
   }
 
   async function placeBid(): Promise<string> {
-    const hash = await actions.placeBid(toQ96(snapped.cents), amount as bigint);
-    toast.success("Bid placed", {
-      description: `${formatBond(amount)} bonds at $${snapped.display}`,
-    });
+    // A failed preflight does not block submission: "Submit anyway" broadcasts
+    // the bid with a fixed gas limit so the refusal is a real reverted tx on
+    // chain, not just a staticcall. The preflight error carries the decoded
+    // reason and is attached to the mined tx hash for the ledger.
+    const error = pf?.error;
+    const hash = await actions.placeBid(
+      toQ96(snapped.cents),
+      amount as bigint,
+      !pf?.ok && error ? { force: true, expectedError: error } : undefined,
+    );
+    if (pf?.ok) {
+      toast.success("Bid placed", {
+        description: `${formatBond(amount)} bonds at $${snapped.display}`,
+      });
+    }
     return hash;
   }
 
   /**
-   * A blocked simulation is still evidence. Submitting anyway writes the
-   * decoded reason into the ledger rather than swallowing it at the button.
+   * A preflight refusal is still submitted on chain (it reverts) and the
+   * decoded reason lands in the ledger with the real transaction hash.
    */
   function recordRefusal(error: AppError) {
     void actions.recordRefusal({
@@ -179,6 +190,7 @@ function Venue() {
       amountRaw: amount as bigint,
       error,
       block: state.lastBlock,
+      tx: error.txHash ?? null,
     });
     toast.error(error.name, { description: error.sentence });
   }
@@ -246,14 +258,28 @@ function Venue() {
         </header>
 
         {/* Stat row */}
-        <div className="mt-8 grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-8 grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-3 xl:grid-cols-7">
           <Stat k="clearing" v={`$${formatCents(state.clearingCents)}`} tone="success" live />
           <Stat
             k="ends in"
             v={hydrated ? formatDuration(blocksToSeconds(state.endsInBlocks)) : "--:--:--"}
             live
           />
-          <Stat k="nav" v={`$${formatCents(state.navCents)}`} live />
+          <Stat
+            k="nav"
+            v={`$${formatCents(state.navCents)}`}
+            tone={state.navStale ? "warning" : undefined}
+            live
+          />
+          <Stat
+            k="nav band"
+            v={
+              state.navStale
+                ? "bypassed (stale)"
+                : `$${formatCents(state.navBandLoCents)}–${formatCents(state.navBandHiCents)}`
+            }
+            tone={state.navStale ? "warning" : undefined}
+          />
           <Stat
             k="holders"
             v={`${holders}/${state.maxInvestors}`}
@@ -383,9 +409,8 @@ function Venue() {
                           ? "Enter an amount greater than zero."
                           : undefined
                   }
-                  simulate={async () => (pf?.ok ? null : (pf?.error ?? null))}
+                  write={placeBid}
                   onRevert={recordRefusal}
-                  write={() => placeBid()}
                 />
                 <p className="ml-auto font-mono text-[11px] text-disabled-foreground">
                   <InlineCode>Q96</InlineCode> / tick ${formatCents(state.tickCents)}

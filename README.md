@@ -31,6 +31,26 @@ regulatory reason (identity, register cap, or NAV band) — then watch an
 eligible bid move the clearing price and settle through an ATS
 hold-by-partition.
 
+**The three refusal beats on camera:**
+
+- **Ownership cap — one bid, zero setup.** Supply is 1,000,000 raw at 2
+  decimals = 10,000.00 bonds; the cap is 1500 bps = 1,500 bonds. Bid 2,000
+  bonds → `WouldExceedMaxOwnership` (`0x840308b8`), and the terminal panel
+  prints `ownershipBps 2000 / 1500`. Narrate it as "the register projection",
+  which is what it is.
+- **Register cap.** Console §2 `setRules` now changes what the hook enforces —
+  the caps are read live from the compliance module on every call, not cached
+  in constructor immutables. Slide `maxInvestors` down and the next new-holder
+  bid is refused with `WouldExceedMaxInvestors`.
+- **NAV band.** `bandBps = 1000`, so the band is **±10%**, not ±2%. Default
+  NAV 103.31 → band 92.98–113.64; bid $130 to trip `PriceOutsideNavBand`. The
+  band **fails open when stale** (`maxStaleness` 3600s) — push NAV from console
+  §5 within the hour before recording, or the beat silently vanishes.
+
+A preflight refusal does not stop the demo: **"Submit anyway" broadcasts the
+bid anyway** with a fixed gas limit, so the refusal is a real reverted
+transaction on HashScan — not just a staticcall.
+
 ### The exemption list is a design decision, not a workaround
 
 ATS has no custodian/exemption concept; the only cap facets are supply caps.
@@ -90,12 +110,13 @@ against the real CCA and ATS adapters.
 | Path | Gas |
 |---|---|
 | `submitBid` without hook | 353,438 |
-| `submitBid` with validation hook | 621,000 |
+| `submitBid` with validation hook | 623,628 |
 
-The hook adds ~267,562 gas. This is above the 400k budget flagged in §6.5 of
-the spec; the hook already caches `MAX_INVESTORS`, `MAX_OWNERSHIP_BPS` and
-`totalSupply` in immutables, so the remaining cost is the ATS diamond
-delegatecalls plus the register-projection reads, not re-reading config.
+The hook adds ~270,190 gas. This is above the 400k budget flagged in §6.5 of
+the spec; the caps (`maxInvestors` / `maxOwnershipBps`) are read live from the
+compliance module on every call so console §2 rule changes take effect without
+redeployment, and the remaining cost is the ATS diamond delegatecalls plus the
+register-projection reads.
 
 ## The four adversarial cases (all tested)
 

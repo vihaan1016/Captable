@@ -105,6 +105,20 @@ export const HOOK_ABI = [
       { name: "maxOwnershipBps", type: "uint256" },
     ],
   },
+  {
+    type: "function",
+    name: "bandBps",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "maxStaleness",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 export const COMPLIANCE_ABI = [
